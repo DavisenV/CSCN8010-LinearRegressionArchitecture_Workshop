@@ -1,0 +1,6 @@
+# Environments
+.venv/
+simulations/README.md
+
+# Security
+.env

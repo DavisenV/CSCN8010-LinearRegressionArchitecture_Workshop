@@ -1,0 +1,21 @@
+# configs/california_config.yaml
+data:
+  raw_csv_path: "data/raw/california_housing.csv"
+  processed_csv_path: "data/processed/california_housing_processed.csv"
+  db_table_name: "california_housing"
+
+features:
+  predictor_col: "MedInc"
+  target_col: "MedHouseVal"
+
+preprocessing:
+  test_size: 0.2
+  random_state: 42
+
+model:
+  learning_rate: 0.01
+  epochs: 1000
+
+experiment:
+  experiment_name: "california_univariate_base"
+  results_csv_path: "experiments/california_results.csv"

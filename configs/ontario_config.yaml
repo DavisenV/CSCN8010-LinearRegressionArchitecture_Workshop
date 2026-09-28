@@ -1,0 +1,21 @@
+# configs/experiment_config.yaml
+data:
+  raw_csv_path: "data/raw/ontario_housing.csv"
+  processed_csv_path: "data/processed/ontario_housing_processed.csv"
+  db_table_name: "ontario_housing"
+
+features:
+  predictor_col: "average_purchase_price_of_a_detached_house"
+  target_col: "affordable_purchase_price_of_a_detached_house"
+
+preprocessing:
+  test_size: 0.2
+  random_state: 42
+
+model:
+  learning_rate: 0.01
+  epochs: 1000
+
+experiment:
+  experiment_name: "ontario_univariate_base"
+  results_csv_path: "experiments/ontario_results.csv"
