@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rent by the Square Foot: Training a Linear Regression Model</title>
+<meta name="description" content="Interactive lab on univariate linear regression for Ontario apartment rents: closed-form normal equation, gradient descent training, and test-set evaluation.">
+<style>
+:root{
+  --paper:#F4F6F8;--surface:#FFFFFF;--surface-2:#EAEEF3;
+  --ink:#16233A;--ink-2:#4A5A72;--rule:#D3DBE5;--rule-strong:#AEBBCB;--grid:#E3E9F0;
+  --spring:#C46A12;--cf:#C62839;--gd:#1C7C45;--predict:#2F62C9;--predict-fill:rgba(47,98,201,.13);--mean:#6B4FD6;
+  --ok-bg:#DDF1E6;--ok:#17613D;--warn-bg:#FBEBD2;--warn:#8A5200;--hit-bg:#DCE7FB;--hit:#1D449A;
+  --serif:"Iowan Old Style","Charter","Palatino Linotype","Book Antiqua",Palatino,Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --r-sm:6px;--r-md:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0E1522;--surface:#151F31;--surface-2:#1D2A40;
+    --ink:#E4EAF3;--ink-2:#9AA9BE;--rule:#2A3850;--rule-strong:#44567A;--grid:#1A2539;
+    --spring:#F2A65A;--cf:#FF7A85;--gd:#62D394;--predict:#7AA5FF;--predict-fill:rgba(122,165,255,.16);--mean:#A993FF;
+    --ok-bg:#173A2A;--ok:#8FD9B0;--warn-bg:#3F2E12;--warn:#F2C27A;--hit-bg:#1E3260;--hit:#BFD3FF;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding-left:20px;padding-right:20px}
+a{color:var(--predict)}
+:focus-visible{outline:3px solid var(--predict);outline-offset:2px;border-radius:4px}
+
+/* Hero */
+header.hero{padding-top:52px;padding-bottom:30px;border-bottom:1px solid var(--rule)}
+.hero h1{font-family:var(--serif);font-weight:600;font-size:clamp(2.2rem,5.5vw,3.6rem);line-height:1.05;letter-spacing:-.01em;margin:0 0 16px;max-width:16ch}
+.hero .lead{font-family:var(--serif);font-size:1.2rem;line-height:1.55;color:var(--ink-2);max-width:62ch;margin:0}
+.hero nav{margin-top:22px}
+.path{font-size:.88rem;color:var(--ink-2);margin:18px 0 0;max-width:80ch}
+
+/* Layout: steps on the left, plot pinned on the right */
+.lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);grid-template-areas:"steps plot";gap:28px;padding-top:28px;padding-bottom:56px}
+.steps{grid-area:steps;min-width:0}
+.plotcol{grid-area:plot;min-width:0}
+.plotpin{position:sticky;top:10px}
+@media (max-width:980px){
+  .lab{grid-template-columns:minmax(0,1fr);grid-template-areas:"plot" "steps";gap:16px}
+  .plotcol{position:sticky;top:0;z-index:5;background:var(--paper);padding:6px 0 8px;border-bottom:1px solid var(--rule)}
+  .plotpin{position:static}
+  .plotcol .legend{font-size:.74rem;gap:0 10px}
+  .plotcol .legend input{width:14px;height:14px}
+}
+
+/* Plot panel */
+.plotbox{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-md);padding:6px 8px 8px}
+#plot{width:100%;display:block}
+#plot text,#loss text{font-family:var(--sans)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:4px 6px 0;font-size:.82rem;color:var(--ink-2)}
+.legend label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.sw{display:inline-block;width:18px;height:0;border-top:3px solid var(--ink);vertical-align:middle}
+.sw.cf{border-color:var(--cf)}.sw.gd{border-color:var(--gd);border-top-style:dashed}
+.sw.test{width:10px;height:10px;border:2px solid var(--ink-2);border-radius:50%}
+.legend select{font:inherit;font-size:.82rem;color:var(--ink);background:var(--surface);border:1px solid var(--rule-strong);border-radius:4px;padding:2px 4px}
+
+/* Step sections */
+.step{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-md);padding:20px 22px;margin-bottom:18px;scroll-margin-top:12px}
+.step>h2{font-family:var(--serif);font-weight:600;font-size:1.55rem;line-height:1.2;margin:0 0 10px}
+.step h3{font-family:var(--serif);font-weight:600;font-size:1.12rem;margin:20px 0 6px}
+.prose p,.prose li{font-family:var(--serif);font-size:1.05rem;line-height:1.62}
+.prose p{margin:0 0 12px}
+.prose ol,.prose ul{margin:0 0 12px;padding-left:1.3em}
+.math{font-family:var(--serif);font-style:italic;white-space:nowrap}
+.display{font-family:var(--serif);font-size:1.12rem;background:var(--paper);border-left:3px solid var(--predict);padding:10px 16px;margin:10px 0 14px;overflow-x:auto;border-radius:0 var(--r-sm) var(--r-sm) 0;line-height:1.8}
+.display .math{font-size:1.12rem}
+.display .note{font-style:normal;font-family:var(--sans);font-size:.84rem;color:var(--ink-2);display:block;line-height:1.45}
+dl.terms{margin:0 0 12px;display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-family:var(--serif);font-size:1.02rem}
+dl.terms dt{font-style:italic;white-space:nowrap}
+dl.terms dd{margin:0}
+.sub{font-size:.88rem;color:var(--ink-2)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.gap{margin-top:12px}
+
+button,a.btn{font:inherit;font-size:.92rem;color:var(--ink);background:var(--surface);border:1px solid var(--rule-strong);border-radius:var(--r-sm);padding:7px 14px;cursor:pointer;text-decoration:none;display:inline-block}
+button:hover,a.btn:hover{background:var(--surface-2)}
+button.primary,a.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.primary:hover,a.btn.primary:hover{opacity:.9;background:var(--ink)}
+button.small{font-size:.82rem;padding:4px 10px}
+input[type=range]{width:100%;accent-color:var(--predict)}
+input[type=checkbox],input[type=radio]{accent-color:var(--predict);width:16px;height:16px}
+input[type=number]{font:inherit;font-size:.95rem;width:7.5em;padding:6px 8px;border:1px solid var(--rule-strong);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font-variant-numeric:tabular-nums}
+.check{font-size:.88rem;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+
+.ctrl{display:grid;grid-template-columns:minmax(150px,auto) 1fr 76px;gap:10px 14px;align-items:center;margin:6px 0 12px}
+.ctrl label{font-size:.9rem;color:var(--ink-2)}
+.ctrl output{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:8px 0 12px}
+.fields label{display:block;font-size:.85rem;color:var(--ink-2);margin-bottom:4px}
+.fields input{width:100%}
+
+.chip{font-size:.85rem;padding:4px 12px;border-radius:999px}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.msg{font-size:.9rem;padding:9px 12px;border-radius:var(--r-sm);margin:10px 0}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}
+.msg.warn{background:var(--warn-bg);color:var(--warn)}
+.msg.info{background:var(--surface-2);color:var(--ink)}
+
+.formula{font-family:var(--serif);font-size:1.06rem;line-height:1.75;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 16px;margin:10px 0;overflow-x:auto}
+.formula .dim{font-family:var(--sans);font-size:.86rem;color:var(--ink-2)}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin:10px 0 14px}
+.metric{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-sm);padding:10px 12px;min-width:0}
+.metric .k{font-size:.78rem;color:var(--ink-2)}
+.metric .v{font-size:1.18rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px;overflow-wrap:anywhere}
+.metric .s{font-size:.74rem;color:var(--ink-2)}
+.metric.warn{background:var(--warn-bg);border-color:transparent}
+.metric.warn .k,.metric.warn .v{color:var(--warn)}
+.v.bad{color:var(--warn)}
+
+.tablebox{max-height:330px;overflow:auto;border:1px solid var(--rule);border-radius:var(--r-sm)}
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+.tablebox table{min-width:520px}
+th{position:sticky;top:0;background:var(--surface-2);font-weight:600;color:var(--ink-2);text-align:right;padding:7px 10px;border-bottom:1px solid var(--rule-strong)}
+th:first-child,td:first-child{text-align:left}
+td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
+td.eq{font-family:var(--serif);font-style:italic}
+#tb tr,#tt tr{cursor:pointer}
+#tb tr:hover td,#tt tr:hover td{background:var(--surface-2)}
+tr.hit td{background:var(--hit-bg)!important;color:var(--hit)}
+tfoot td{font-weight:600;border-bottom:0}
+td.bad{color:var(--warn)}
+table.map{min-width:0;margin:6px 0 12px}
+table.map td,table.map th{text-align:left}
+table.map td.m{font-family:var(--serif);font-style:italic;font-size:1rem}
+
+.lossbox{border:1px solid var(--rule);border-radius:var(--r-sm);padding:6px;background:var(--paper)}
+#loss{width:100%;display:block}
+
+pre{font-family:var(--mono);font-size:.8rem;line-height:1.55;background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-sm);padding:12px 14px;overflow-x:auto;margin:6px 0 10px}
+code{font-family:var(--mono);font-size:.9em}
+.codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px}
+.codehead h3{margin:0}
+
+.radios{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0 10px}
+.radios label{display:inline-flex;align-items:center;gap:6px;font-size:.92rem;cursor:pointer}
+
+.try ol{margin:0;padding-left:1.3em}
+footer{border-top:1px solid var(--rule);padding-top:22px;padding-bottom:40px;font-size:.85rem;color:var(--ink-2)}
+footer p{max-width:80ch;margin:0 0 8px}
+
+[hidden]{display:none!important}
+@media (max-width:620px){
+  .ctrl{grid-template-columns:1fr 72px}
+  .ctrl label{grid-column:1/-1;margin-bottom:-6px}
+  .step{padding:16px}
+  header.hero{padding-top:34px}
+  dl.terms{grid-template-columns:1fr}
+  dl.terms dd{margin-bottom:6px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Rent by the square foot</h1>
+    <p class="lead">Train a univariate linear regression model on synthetic Ontario rental data in two ways, with the closed-form normal equation and with gradient descent, then test it on apartments the model has never seen.</p>
+    <nav><a class="btn primary" href="#s1">Start at Step 1</a></nav>
+    <p class="path">1 Generate data, 2 Understand the model, 3 Residuals and loss, 4 Closed-form solution, 5 Gradient descent, 6 Compare solutions, 7 Evaluate on test data, 8 Predict a new rent, 9 Connect to scikit-learn</p>
+  </div>
+</header>
+
+<main class="wrap lab">
+
+<!-- ===================== Plot (pinned) ===================== -->
+<div class="plotcol">
+  <div class="plotpin">
+    <div class="plotbox">
+      <svg id="plot" viewBox="0 0 680 360" role="img" aria-label="Scatter plot of monthly rent against square feet with regression lines"></svg>
+      <div class="legend" id="legend" hidden>
+        <label><input type="checkbox" id="vMan" checked> <span class="sw"></span> Your line</label>
+        <label><input type="checkbox" id="vCF"> <span class="sw cf"></span> Closed-form</label>
+        <label><input type="checkbox" id="vGD"> <span class="sw gd"></span> Gradient descent</label>
+        <label><input type="checkbox" id="vTest" checked> <span class="sw test"></span> Test apartments</label>
+        <label>Springs on <select id="vSpr"><option value="manual">your line</option><option value="cf">closed-form</option><option value="gd">gradient descent</option><option value="none">none</option></select></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="steps">
+
+<!-- ===================== 1 ===================== -->
+<section class="step" id="s1" aria-labelledby="h1">
+  <h2 id="h1">1. Generate data</h2>
+  <div class="prose">
+    <p>Each apartment gets a random size between 400 and 1,300 sq ft. Its monthly rent in Canadian dollars follows a hidden pricing rule plus random noise. The noise level sets how far rents stray from that rule. The seed makes a sample reproducible: the same seed and settings always give the same apartments, as <code>np.random.seed(42)</code> does in the workshop notebook.</p>
+    <p>The sample is then split 80/20. The model learns only from the <strong>training set</strong>. The <strong>test set</strong> is held back until Step 7, so you can check predictions on apartments the model has never seen.</p>
+  </div>
+  <div class="ctrl">
+    <label for="nS">Number of apartments</label><input type="range" id="nS" min="10" max="100" step="1" value="25"><output id="nO" for="nS">25</output>
+    <label for="noiseS">Noise level (typical deviation)</label><input type="range" id="noiseS" min="20" max="300" step="10" value="110"><output id="noiseO" for="noiseS">$110</output>
+  </div>
+  <div class="row" style="margin-bottom:12px">
+    <span class="sub">Quick picks:</span>
+    <button type="button" class="small" data-n="10">10</button><button type="button" class="small" data-n="25">25</button><button type="button" class="small" data-n="50">50</button><button type="button" class="small" data-n="100">100</button>
+  </div>
+  <div class="row" style="margin-bottom:14px">
+    <label for="seedI" class="sub">Random seed</label><input type="number" id="seedI" value="42" min="0" step="1">
+    <button type="button" id="seedNew">New seed</button>
+  </div>
+  <button type="button" class="primary" id="gen">Generate data</button>
+  <div class="msg info" id="genMsg" hidden aria-live="polite"></div>
+</section>
+
+<div id="after" hidden>
+
+<!-- ===================== 2 ===================== -->
+<section class="step" id="s2" aria-labelledby="h2">
+  <h2 id="h2">2. Understand the model</h2>
+  <div class="prose">
+    <p>A univariate linear regression model predicts rent from one feature, the apartment's size:</p>
+    <div class="display"><span class="math">ŷ = wx + b</span><span class="note">x is size in square feet (the independent variable). ŷ ("y-hat") is predicted rent; y without the hat is the actual rent (the dependent variable).</span></div>
+    <p>Different courses and libraries name the two parameters differently. They are the same numbers:</p>
+  </div>
+  <div style="overflow-x:auto">
+  <table class="map">
+    <thead><tr><th scope="col">Role</th><th scope="col">Workshop</th><th scope="col">Statistics</th><th scope="col">Parameter vector</th></tr></thead>
+    <tbody>
+      <tr><td>Weight (slope)</td><td class="m">w</td><td class="m">b₁</td><td class="m">θ₁</td></tr>
+      <tr><td>Bias (intercept)</td><td class="m">b</td><td class="m">b₀</td><td class="m">θ₀</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="prose">
+    <p><span class="math">w</span> is how much predicted rent changes for each extra square foot. <span class="math">b</span> is predicted rent at <span class="math">x = 0</span>. No apartment has zero square feet, so read <span class="math">b</span> as the number that positions the line, not as a real price.</p>
+    <p>Your line starts flat at the average training rent. Move the sliders to fit it by eye.</p>
+  </div>
+  <div class="ctrl">
+    <label for="m">Weight w (b₁), $ per sq ft</label><input type="range" id="m" step="0.01"><output id="mo" for="m"></output>
+    <label for="b">Bias b (b₀), base rent</label><input type="range" id="b" step="1"><output id="bo" for="b"></output>
+  </div>
+  <div class="formula" id="manEq"></div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="step" id="s3" aria-labelledby="h3">
+  <h2 id="h3">3. Understand residuals and loss</h2>
+  <div class="prose">
+    <p>The residual for training apartment <span class="math">i</span> is <span class="math">eᵢ = yᵢ − ŷᵢ</span>. On the plot, each residual is a spring from the point to the line. A positive residual means the apartment rents for more than the line predicts, and a negative one means it rents for less.</p>
+    <p>A loss function scores all the residuals at once. The sum of squared errors is <span class="math">SSE = Σ eᵢ²</span>. The workshop's training loss is its mean over the <span class="math">n</span> training apartments:</p>
+    <div class="display"><span class="math">MSE(w, b) = (1/n) Σ (yᵢ − (wxᵢ + b))² = SSE / n</span></div>
+    <p>Dividing by <span class="math">n</span> rescales the loss without moving its lowest point, so SSE and MSE are minimized by exactly the same <span class="math">w</span> and <span class="math">b</span>. Squaring stops positive and negative misses from cancelling and makes large misses count more. Spring energy also grows with the square of the stretch, so the best line is where the springs hold the least total energy.</p>
+    <p>At that minimum two balance conditions hold. <span class="math">Σ eᵢ = 0</span>: the up and down pulls cancel, which puts the line through the average point <span class="math">(x̄, ȳ)</span>. <span class="math">Σ (xᵢ − x̄) eᵢ = 0</span>: the twisting forces cancel, which fixes the tilt.</p>
+  </div>
+  <label class="check" style="margin-bottom:10px"><input type="checkbox" id="pivot"> Keep your line through the average point when tilting</label>
+  <div class="row" aria-live="polite"><span id="chH" class="chip"></span><span id="chT" class="chip"></span></div>
+  <div class="metrics">
+    <div class="metric"><div class="k">SSE (spring energy)</div><div class="v" id="sse"></div><div class="s" id="ssemin"></div></div>
+    <div class="metric"><div class="k">MSE = SSE / n</div><div class="v" id="mseMan"></div><div class="s">training loss ($²)</div></div>
+    <div class="metric"><div class="k">Training R²</div><div class="v" id="r2"></div></div>
+    <div class="metric"><div class="k">Net pull Σe</div><div class="v" id="se"></div></div>
+    <div class="metric"><div class="k">Net twist Σ(x − x̄)e</div><div class="v" id="tw"></div></div>
+  </div>
+  <p class="sub" style="margin:0 0 10px">Training R² = 1 − SSE / SST compares your line with predicting the average rent for every apartment. A hand-set line can do worse than that, and R² then turns negative.</p>
+  <div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <span class="sub">Training apartments. Select a row to use its size in Step 8.</span>
+    <label class="check"><input type="checkbox" id="hide"> Hide predictions and residuals (exercise mode)</label>
+  </div>
+  <div class="tablebox">
+    <table>
+      <thead><tr><th scope="col">Sq ft (x)</th><th scope="col">ŷ = wx + b</th><th scope="col">Predicted ŷ</th><th scope="col">Actual y</th><th scope="col">Residual e</th></tr></thead>
+      <tbody id="tb"></tbody>
+      <tfoot><tr><td colspan="4">Sum of residuals</td><td id="sum"></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section class="step" id="s4" aria-labelledby="h4">
+  <h2 id="h4">4. Closed-Form / Normal Equation Solution</h2>
+  <div class="prose">
+    <p>Setting both partial derivatives of MSE to zero gives the two balance conditions from Step 3. Solving them gives <span class="math">w</span> and <span class="math">b</span> directly, in a single calculation with no iteration:</p>
+    <div class="display"><span class="math">ŵ = Σ(xᵢ − x̄)(yᵢ − ȳ) / Σ(xᵢ − x̄)²</span><br><span class="math">b̂ = ȳ − ŵ x̄</span></div>
+    <p>The workshop notebook computes the same result in matrix form, <span class="math">θ = (XᵀX)⁻¹Xᵀy</span>, where each row of <span class="math">X</span> is <span class="math">[xᵢ, 1]</span>. The results are named <code>w_hat</code> and <code>b_hat</code>. scikit-learn's <code>LinearRegression</code> solves the problem this way too, which is why it has no epochs.</p>
+  </div>
+  <button type="button" class="primary" id="cfBtn">Compute closed-form solution</button>
+  <div id="cfOut" hidden>
+    <div class="formula" id="cfEq"></div>
+    <div class="metrics">
+      <div class="metric"><div class="k">w_hat</div><div class="v" id="cfW"></div><div class="s">$ per sq ft</div></div>
+      <div class="metric"><div class="k">b_hat</div><div class="v" id="cfB"></div><div class="s">base rent</div></div>
+      <div class="metric"><div class="k">Training MSE</div><div class="v" id="cfMSE"></div><div class="s">the minimum possible</div></div>
+    </div>
+    <button type="button" id="snap">Move your line to (w_hat, b_hat)</button>
+  </div>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section class="step" id="s5" aria-labelledby="h5">
+  <h2 id="h5">5. Gradient Descent Training</h2>
+  <div class="prose">
+    <p>Gradient descent finds the same minimum by repeated small improvements. It starts from initial values of <span class="math">w</span> and <span class="math">b</span>. In every epoch it:</p>
+    <ol>
+      <li>predicts rent for every training apartment with the current <span class="math">w</span> and <span class="math">b</span>;</li>
+      <li>computes the gradients, which point in the direction that increases MSE fastest;</li>
+      <li>moves both parameters a step in the opposite direction.</li>
+    </ol>
+    <p><strong>One epoch is one complete pass through the training dataset.</strong> This lab uses every training apartment in each update (batch gradient descent), so each epoch makes exactly one update.</p>
+    <div class="display">
+      <span class="math">∂MSE/∂w = −(2/n) Σ (yᵢ − ŷᵢ) xᵢ</span><br>
+      <span class="math">∂MSE/∂b = −(2/n) Σ (yᵢ − ŷᵢ)</span><br>
+      <span class="math">w ← w − η · ∂MSE/∂w</span><br>
+      <span class="math">b ← b − η · ∂MSE/∂b</span>
+    </div>
+    <p>The learning rate <span class="math">η</span> controls how large each update is. Too small, and convergence is slow. An appropriate value gives stable convergence. Too large, and each update overshoots the minimum, so the loss oscillates or grows without limit (divergence).</p>
+    <p><strong>Units during training.</strong> Training measures <span class="math">x</span> in thousands of square feet. On raw square feet, <span class="math">x</span> is about 1,000 times larger than the constant 1 that multiplies <span class="math">b</span>, so any learning rate small enough to keep <span class="math">w</span> stable leaves <span class="math">b</span> almost frozen. After rescaling, the weight is learned in dollars per 1,000 sq ft, and the lab divides it by 1,000 to report <code>w_gd</code> in dollars per sq ft, comparable with <code>w_hat</code>. Rescaling doesn't change <code>b_gd</code>.</p>
+  </div>
+  <div class="fields">
+    <div><label for="w0I">Initial w ($ per sq ft)</label><input type="number" id="w0I" value="0" step="0.1"></div>
+    <div><label for="b0I">Initial b ($)</label><input type="number" id="b0I" value="0" step="50"></div>
+    <div><label for="lrI">Learning rate η</label><input type="number" id="lrI" value="0.3" step="0.01" min="0.0001" max="5"></div>
+    <div><label for="epI">Number of epochs</label><input type="number" id="epI" value="300" step="10" min="1" max="5000"></div>
+  </div>
+  <div class="row" style="margin-bottom:12px">
+    <span class="sub">Learning rate presets:</span>
+    <button type="button" class="small" data-lr="0.02">Too small (0.02)</button>
+    <button type="button" class="small" data-lr="0.3">Appropriate (0.3)</button>
+    <button type="button" class="small" data-lr="0.8">Too large (0.8)</button>
+  </div>
+  <div class="row">
+    <button type="button" id="gdReset">Reset Training</button>
+    <button type="button" id="gdNext">Next Epoch</button>
+    <button type="button" class="primary" id="gdTrain">Train</button>
+  </div>
+  <p class="sub gap" style="margin-bottom:0">Changing an initial value or the learning rate resets training.</p>
+  <div class="msg" id="gdMsg" hidden aria-live="polite"></div>
+  <div class="metrics">
+    <div class="metric"><div class="k">Epoch</div><div class="v" id="gEp"></div></div>
+    <div class="metric"><div class="k">w_gd</div><div class="v" id="gW"></div><div class="s" id="gWk"></div></div>
+    <div class="metric"><div class="k">b_gd</div><div class="v" id="gB"></div></div>
+    <div class="metric"><div class="k">Training MSE</div><div class="v" id="gMSE"></div></div>
+    <div class="metric"><div class="k">∂MSE/∂w</div><div class="v" id="gGw"></div><div class="s">x in 1,000 sq ft</div></div>
+    <div class="metric"><div class="k">∂MSE/∂b</div><div class="v" id="gGb"></div></div>
+  </div>
+  <div class="formula" id="gdUpd"></div>
+  <div class="row" style="justify-content:space-between;margin:12px 0 6px">
+    <h3 style="margin:0">Loss versus epoch</h3>
+    <label class="check"><input type="checkbox" id="logS" checked> Log scale</label>
+  </div>
+  <div class="lossbox"><svg id="loss" viewBox="0 0 680 230" role="img" aria-label="Training MSE by epoch"></svg></div>
+</section>
+
+<!-- ===================== 6 ===================== -->
+<section class="step" id="s6" aria-labelledby="h6">
+  <h2 id="h6">6. Compare the two solutions</h2>
+  <div class="prose">
+    <p>Both methods minimize the same MSE on the same training data. With a suitable learning rate and enough epochs, the gradient descent line lands on the closed-form line. On the plot, the closed-form line is solid red and the gradient descent line is dashed green.</p>
+  </div>
+  <div style="overflow-x:auto"><table id="cmp"></table></div>
+  <div class="msg" id="cmpMsg" hidden></div>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section class="step" id="s7" aria-labelledby="h7">
+  <h2 id="h7">7. Evaluate on test data</h2>
+  <div class="prose">
+    <p><strong>MSE is the training loss:</strong> the quantity each method minimizes on the training set. To judge the finished model, measure its errors on the test set, which played no part in fitting. With <span class="math">m</span> test apartments:</p>
+    <dl class="terms">
+      <dt>MAE = (1/m) Σ |yᵢ − ŷᵢ|</dt><dd>The average miss, in dollars.</dd>
+      <dt>RMSE = √[(1/m) Σ (yᵢ − ŷᵢ)²]</dt><dd>Also in dollars, but large misses count more.</dd>
+      <dt>R² = 1 − Σ(yᵢ − ŷᵢ)² / Σ(yᵢ − ȳ)²</dt><dd>The share of the test set's variation in rent that the model explains.</dd>
+    </dl>
+    <p>With only a few test apartments, these numbers change a lot from one sample to the next. Generate 100 apartments to see them settle.</p>
+  </div>
+  <div style="overflow-x:auto"><table id="evalT"></table></div>
+  <h3>Test apartments</h3>
+  <div class="tablebox" style="max-height:240px">
+    <table>
+      <thead><tr><th scope="col">Sq ft (x)</th><th scope="col">Actual y</th><th scope="col">ŷ closed-form</th><th scope="col">ŷ gradient descent</th></tr></thead>
+      <tbody id="tt"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section class="step" id="s8" aria-labelledby="h8">
+  <h2 id="h8">8. Predict a new rent</h2>
+  <div class="prose">
+    <p>To predict rent for a new apartment, plug its size into the trained model: <span class="math">ŷ_new = w x_new + b</span>. Choose which trained parameters to use.</p>
+  </div>
+  <div class="radios" role="radiogroup" aria-label="Parameters used for prediction">
+    <label><input type="radio" name="src" value="cf" checked> Closed-form (w_hat, b_hat)</label>
+    <label><input type="radio" name="src" value="gd"> Gradient descent (w_gd, b_gd)</label>
+  </div>
+  <div class="ctrl">
+    <label for="x0">New apartment x_new (sq ft)</label><input type="range" id="x0" min="0" max="1600" step="5"><output id="xo" for="x0"></output>
+  </div>
+  <div class="formula" id="predEq" aria-live="polite"></div>
+  <div class="metrics">
+    <div class="metric"><div class="k">Predicted rent ŷ_new</div><div class="v" id="yh"></div><div class="s" id="yhSrc"></div></div>
+    <div class="metric"><div class="k">Actual rent</div><div class="v" id="yo"></div><div class="s" id="yoSet"></div></div>
+    <div class="metric" id="pic"><div class="k" id="pil">95% prediction interval</div><div class="v" id="pi" style="font-size:1rem"></div></div>
+  </div>
+  <div class="prose">
+    <p>A single number hides its uncertainty. For the closed-form fit, the 95% prediction interval is</p>
+    <div class="display"><span class="math">ŷ ± t · s · √(1 + 1/n + (x_new − x̄)² / Σ(xᵢ − x̄)²)</span><span class="note">s = √(SSE / (n − 2)) from the training set, and t comes from the t-distribution with n − 2 degrees of freedom. The formula assumes least-squares parameters, so the lab shows it only for the closed-form solution.</span></div>
+    <p>The interval is narrowest at the average size and widens away from it. Beyond the range of training sizes (the shaded zones on the plot) you are <strong>extrapolating</strong>: the equation still returns a number, but the data gives no evidence that the relationship stays linear there.</p>
+  </div>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section class="step" id="s9" aria-labelledby="h9">
+  <h2 id="h9">9. Connect to scikit-learn</h2>
+  <div class="prose">
+    <p>These Python examples do the same work as Steps 4, 5, and 7. They don't run here; copy them into a notebook. They generate their own random data, so their numbers won't match the lab exactly.</p>
+  </div>
+  <div class="codehead"><h3>Closed-form: LinearRegression</h3><button type="button" class="small" data-copy="code1">Copy</button></div>
+<pre><code id="code1">import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+rng = np.random.default_rng(42)
+n = 25
+X = rng.uniform(400, 1300, n).reshape(-1, 1)            # size, sq ft
+y = 1000 + 1.25 * X.ravel() + rng.normal(0, 110, n)     # monthly rent, CAD
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42)
+
+linreg = LinearRegression()          # closed-form least squares, no epochs
+linreg.fit(X_train, y_train)         # training set only
+w_hat, b_hat = linreg.coef_[0], linreg.intercept_
+
+y_pred = linreg.predict(X_test)      # evaluate on unseen test data
+mae  = mean_absolute_error(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+r2   = r2_score(y_test, y_pred)
+print(f"w_hat={w_hat:.4f}  b_hat={b_hat:,.0f}  MAE={mae:,.0f}  RMSE={rmse:,.0f}  R2={r2:.3f}")</code></pre>
+
+  <div class="codehead"><h3>Gradient descent: SGDRegressor</h3><button type="button" class="small" data-copy="code2">Copy</button></div>
+<pre><code id="code2">from sklearn.linear_model import SGDRegressor
+
+X_train_k = X_train / 1000           # thousands of sq ft, as in the lab
+X_test_k  = X_test / 1000
+
+sgd = SGDRegressor(
+    loss="squared_error",
+    penalty=None,                    # plain least squares
+    learning_rate="constant",
+    eta0=0.01,                       # learning rate
+    max_iter=1000,                   # maximum number of epochs
+    early_stopping=True,             # stop when validation score stops improving
+    validation_fraction=0.2,
+    n_iter_no_change=5,
+    random_state=42)
+sgd.fit(X_train_k, y_train)
+
+w_gd = sgd.coef_[0] / 1000           # back to $ per sq ft
+b_gd = sgd.intercept_[0]
+print(f"epochs run={sgd.n_iter_}  w_gd={w_gd:.4f}  b_gd={b_gd:,.0f}")</code></pre>
+
+  <dl class="terms">
+    <dt><code>max_iter</code></dt><dd>The maximum number of epochs, full passes over the training data.</dd>
+    <dt><code>eta0</code></dt><dd>The initial learning rate η. With <code>learning_rate="constant"</code> it stays fixed, as in this lab.</dd>
+    <dt><code>early_stopping</code></dt><dd>Holds back <code>validation_fraction</code> of the training data and stops when the validation score fails to improve for <code>n_iter_no_change</code> epochs.</dd>
+  </dl>
+  <div class="prose">
+    <p>One difference from the lab: <code>SGDRegressor</code> is stochastic. It updates after every single apartment instead of once per pass, so one epoch makes many small updates. An epoch still means one full pass through the training data. With only 20 training apartments, early stopping also has very little validation data to work with; it earns its keep on large datasets.</p>
+  </div>
+</section>
+
+<section class="step try" aria-labelledby="htry">
+  <h2 id="htry">Things to try</h2>
+  <ol class="prose">
+    <li>After generating data, sketch where you think the best line will go. Fit your line by eye in Step 2 and compare it with the closed-form line in Step 4.</li>
+    <li>In Step 3, tick "Keep your line through the average point" and move only the weight. The height check stays green, but MSE only reaches its minimum when the tilt check turns green too.</li>
+    <li>Turn on exercise mode, calculate ŷ and each residual by hand, then check your work. Confirm the residuals add to zero at the closed-form solution.</li>
+    <li>In Step 5, train with each learning-rate preset. Compare the loss curves: slow, smooth, and exploding.</li>
+    <li>Start gradient descent from a very different initial w and b. Does it still reach the closed-form line? Why?</li>
+    <li>Compare the training MSE with the test RMSE in Step 7. Why can the model do worse on test data than on training data?</li>
+    <li>Predict rent for a size that appears in the test table. The prediction is the line's value, not the actual rent; the gap is that apartment's error.</li>
+    <li>Generate 10, then 100 apartments with the same noise level. Watch how steady the parameters, the test metrics, and the prediction interval become.</li>
+  </ol>
+</section>
+
+</div><!-- /after -->
+</div><!-- /steps -->
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>The apartments are synthetic. Each rent comes from a fixed pricing rule plus normally distributed noise, rounded to the nearest $5. The data does not describe any real listings.</p>
+    <p>Runs offline in any modern browser. No installation, no network requests, no dependencies. Companion to the LinearRegressionArchitecture_Workshop notebooks.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+"use strict";
+// ---------- constants ----------
+const TT=[12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228,2.201,2.179,2.160,2.145,2.131,2.120,2.110,2.101,2.093,2.086,2.080,2.074,2.069,2.064,2.060,2.056,2.052,2.048,2.045,2.042];
+const tq=df=>df<=30?TT[df-1]:1.96+2.5/df;
+const TRUE_B0=1000, TRUE_B1=1.25;       // hidden pricing rule: rent = 1000 + 1.25 * sqft + noise
+const TEST_FRACTION=0.2;
+const XSCALE=1000;                      // gradient descent trains on x / 1000
+const DIVERGE=1e14;
+
+const XMAX=1600,YMAX=3500,W=680,H=360,L=80,R=20,T=16,Bm=46;
+const px=x=>L+x/XMAX*(W-L-R),py=y=>H-Bm-y/YMAX*(H-T-Bm);
+const $=id=>document.getElementById(id);
+const loc='en-CA';
+const reduceMotion=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+const fm=v=>(Math.round(v)<0?'−':'')+'$'+Math.abs(Math.round(v)).toLocaleString(loc);
+const sg=v=>Math.round(v)===0?'$0':(v>0?'+':'−')+'$'+Math.abs(Math.round(v)).toLocaleString(loc);
+const fx=v=>Math.round(v).toLocaleString(loc);
+const fs=v=>Math.round(v)===0?'0':(v>0?'+':'−')+Math.abs(Math.round(v)).toLocaleString(loc);
+const fn=(v,d)=>{if(!isFinite(v))return '—';const s=Math.abs(v).toLocaleString(loc,{minimumFractionDigits:d,maximumFractionDigits:d});return (v<0&&s.replace(/[0.,]/g,'')!==''?'−':'')+s};
+const fbig=v=>{if(!isFinite(v))return '—';const a=Math.abs(v);if(a>=1e9)return (v<0?'−':'')+a.toExponential(2);return fn(v,a>=1e5?0:2)};
+const fmse=v=>isFinite(v)?(v>=1e9?v.toExponential(2):Math.round(v).toLocaleString(loc)):'—';
+
+// ---------- seeded random numbers ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffle(arr,rnd){for(let i=arr.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}return arr}
+
+// ---------- state ----------
+let D=null;                                   // data and closed-form statistics
+const cf={shown:false};
+const man={w:0,b:0};
+const gd={w0:0,b0:0,lr:0.3,wk:0,b:0,epoch:0,hist:[],last:null,diverged:false,running:false,raf:0};
+const view={man:true,cf:false,gd:false,test:true,springs:'manual'};
+const pred={x:800,src:'cf'};
+
+// ---------- Step 1: data ----------
+const nS=$('nS'),noiseS=$('noiseS'),seedI=$('seedI');
+function out1(){$('nO').textContent=nS.value;$('noiseO').textContent='$'+noiseS.value}
+nS.addEventListener('input',out1);noiseS.addEventListener('input',out1);
+document.querySelectorAll('[data-n]').forEach(b=>b.addEventListener('click',()=>{nS.value=b.dataset.n;out1()}));
+$('seedNew').addEventListener('click',()=>{seedI.value=(parseInt(seedI.value,10)||0)+1});
+
+function generate(){
+  stopRun();
+  const n=+nS.value,noise=+noiseS.value,seed=Math.max(0,parseInt(seedI.value,10)||0);seedI.value=seed;
+  const rnd=mulberry32(seed);
+  const randn=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  const pool=[];for(let v=400;v<=1300;v+=5)pool.push(v);
+  const xs=shuffle(pool,rnd).slice(0,n);
+  const ys=xs.map(x=>Math.max(800,Math.round((TRUE_B0+TRUE_B1*x+noise*randn())/5)*5));
+  const idx=shuffle(xs.map((_,i)=>i),rnd);
+  const nTest=Math.round(n*TEST_FRACTION),testSet=new Set(idx.slice(0,nTest));
+  const tr=[],te=[];xs.forEach((x,i)=>(testSet.has(i)?te:tr).push({x,y:ys[i]}));
+  tr.sort((a,b)=>a.x-b.x);te.sort((a,b)=>a.x-b.x);
+  const nt=tr.length,xb=tr.reduce((a,p)=>a+p.x,0)/nt,yb=tr.reduce((a,p)=>a+p.y,0)/nt;
+  let sxx=0,sxy=0,sst=0;tr.forEach(p=>{sxx+=(p.x-xb)**2;sxy+=(p.x-xb)*(p.y-yb);sst+=(p.y-yb)**2});
+  const wh=sxy/sxx,bh=yb-wh*xb;let sseMin=0;tr.forEach(p=>{sseMin+=(p.y-(wh*p.x+bh))**2});
+  D={n,noise,seed,tr,te,nt,xb,yb,sxx,sxy,sst,wh,bh,sseMin,xmin:tr[0].x,xmax:tr[nt-1].x};
+
+  cf.shown=false;view.cf=false;view.gd=false;view.springs='manual';view.man=true;
+  man.w=0;man.b=yb;
+  const mS=$('m'),bS=$('b');
+  mS.min=Math.min(0,Math.floor((wh-0.5)*100)/100);mS.max=Math.max(2.5,Math.ceil((wh+0.5)*100)/100);
+  bS.min=Math.round(Math.min(bh-800,yb-(+mS.max)*xb-100));bS.max=Math.round(Math.max(bh+800,yb+100));
+  mS.value=0;bS.value=Math.round(yb);$('pivot').checked=false;$('hide').checked=false;
+  pred.x=tr[Math.floor(nt/2)].x;$('x0').value=pred.x;
+  $('cfOut').hidden=true;$('cfBtn').hidden=false;
+  gdInit();
+  const g=$('genMsg');g.hidden=false;
+  g.textContent=`${n} apartments: ${nt} in the training set (filled dots) and ${te.length} in the test set (hollow circles). Before moving on, sketch where you think the best line will go.`;
+  $('after').hidden=false;$('legend').hidden=false;
+  update();
+}
+$('gen').addEventListener('click',generate);
+
+// ---------- Step 2/3: your line ----------
+const mS=$('m'),bS=$('b'),pivot=$('pivot'),hide=$('hide');
+mS.addEventListener('input',()=>{man.w=+mS.value;if(Math.abs(man.w-D.wh)<0.005)man.w=D.wh;
+  if(pivot.checked){man.b=D.yb-man.w*D.xb;bS.value=Math.round(man.b);if(Math.abs(man.b-D.bh)<0.5)man.b=D.bh}
+  springsTo('manual');update()});
+bS.addEventListener('input',()=>{man.b=+bS.value;if(Math.abs(man.b-D.bh)<0.5)man.b=D.bh;springsTo('manual');update()});
+hide.addEventListener('change',update);
+
+// ---------- Step 4: closed form ----------
+$('cfBtn').addEventListener('click',()=>{cf.shown=true;view.cf=true;$('cfOut').hidden=false;$('cfBtn').hidden=true;update()});
+$('snap').addEventListener('click',()=>{man.w=D.wh;man.b=D.bh;mS.value=D.wh;bS.value=Math.round(D.bh);view.man=true;springsTo('manual');update()});
+
+// ---------- Step 5: gradient descent ----------
+const w0I=$('w0I'),b0I=$('b0I'),lrI=$('lrI'),epI=$('epI');
+function mseK(wk,b){let s=0;for(const p of D.tr){const e=p.y-(wk*p.x/XSCALE+b);s+=e*e}return s/D.nt}
+function grads(wk,b){let gw=0,gb=0;for(const p of D.tr){const u=p.x/XSCALE,e=p.y-(wk*u+b);gw+=e*u;gb+=e}return{gw:-2/D.nt*gw,gb:-2/D.nt*gb}}
+function gdInit(){
+  stopRun();
+  const w0=parseFloat(w0I.value),b0=parseFloat(b0I.value),lr=parseFloat(lrI.value);
+  gd.w0=isFinite(w0)?w0:0;gd.b0=isFinite(b0)?b0:0;gd.lr=isFinite(lr)&&lr>0?lr:0.3;
+  gd.wk=gd.w0*XSCALE;gd.b=gd.b0;gd.epoch=0;gd.last=null;gd.diverged=false;
+  gd.hist=D?[mseK(gd.wk,gd.b)]:[];
+}
+function gdStep(){
+  if(gd.diverged)return false;
+  const g=grads(gd.wk,gd.b),wkPrev=gd.wk,bPrev=gd.b;
+  gd.wk-=gd.lr*g.gw;gd.b-=gd.lr*g.gb;gd.epoch++;
+  const m=mseK(gd.wk,gd.b);gd.last={g,wkPrev,bPrev};
+  if(!isFinite(m)||m>DIVERGE||!isFinite(gd.wk)||!isFinite(gd.b)){gd.diverged=true;gd.hist.push(DIVERGE);return false}
+  gd.hist.push(m);return true;
+}
+function targetEpochs(){const v=parseInt(epI.value,10);return Math.min(5000,Math.max(1,isFinite(v)?v:300))}
+function firstTrain(){if(!view.gd){view.gd=true}springsTo('gd')}
+function stopRun(){if(gd.raf)cancelAnimationFrame(gd.raf);gd.raf=0;gd.running=false;const t=$('gdTrain');if(t)t.textContent='Train'}
+[w0I,b0I,lrI].forEach(el=>el.addEventListener('change',()=>{if(!D)return;gdInit();update()}));
+document.querySelectorAll('[data-lr]').forEach(bt=>bt.addEventListener('click',()=>{lrI.value=bt.dataset.lr;if(!D)return;gdInit();update()}));
+$('gdReset').addEventListener('click',()=>{gdInit();update()});
+$('gdNext').addEventListener('click',()=>{stopRun();firstTrain();gdStep();update()});
+$('gdTrain').addEventListener('click',()=>{
+  if(gd.running){stopRun();update();return}
+  const target=targetEpochs();
+  if(gd.diverged){update();return}
+  if(gd.epoch>=target){showGdMsg('info',`Already at epoch ${fx(gd.epoch)}. Raise the number of epochs to keep training, or press Reset Training.`);return}
+  firstTrain();
+  if(reduceMotion){while(gd.epoch<target&&gdStep()){}update();return}
+  gd.running=true;$('gdTrain').textContent='Stop';
+  const per=Math.max(1,Math.ceil((target-gd.epoch)/150));
+  const tick=()=>{for(let i=0;i<per&&gd.epoch<target;i++){if(!gdStep())break}
+    update();if(gd.epoch<target&&!gd.diverged){gd.raf=requestAnimationFrame(tick)}else{stopRun();update()}};
+  gd.raf=requestAnimationFrame(tick);
+});
+$('logS').addEventListener('change',drawLoss);
+
+// ---------- legend ----------
+function springsTo(v){view.springs=v;$('vSpr').value=v}
+$('vMan').addEventListener('change',e=>{view.man=e.target.checked;update()});
+$('vCF').addEventListener('change',e=>{view.cf=e.target.checked;if(view.cf&&!cf.shown){cf.shown=true;$('cfOut').hidden=false;$('cfBtn').hidden=true}update()});
+$('vGD').addEventListener('change',e=>{view.gd=e.target.checked;update()});
+$('vTest').addEventListener('change',e=>{view.test=e.target.checked;update()});
+$('vSpr').addEventListener('change',e=>{view.springs=e.target.value;if(view.springs==='cf'&&!cf.shown){cf.shown=true;view.cf=true;$('cfOut').hidden=false;$('cfBtn').hidden=true}update()});
+
+// ---------- Step 8 ----------
+$('x0').addEventListener('input',e=>{pred.x=+e.target.value;update()});
+document.querySelectorAll('input[name=src]').forEach(r=>r.addEventListener('change',e=>{pred.src=e.target.value;update()}));
+function setX(x){pred.x=x;$('x0').value=x;update()}
+['tb','tt'].forEach(id=>{const tb=$(id);
+  tb.addEventListener('click',e=>{const r=e.target.closest('tr');if(r)setX(+r.dataset.x)});
+  tb.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const r=e.target.closest('tr');if(r){e.preventDefault();const x=r.dataset.x;setX(+x);const nr=tb.querySelector(`tr[data-x="${x}"]`);if(nr)nr.focus()}}});
+});
+
+// ---------- copy buttons ----------
+document.querySelectorAll('[data-copy]').forEach(bt=>bt.addEventListener('click',()=>{
+  const el=$(bt.dataset.copy),text=el.textContent,done=()=>{bt.textContent='Copied';setTimeout(()=>bt.textContent='Copy',1600)};
+  const fallback=()=>{const r=document.createRange();r.selectNodeContents(el);const s=window.getSelection();s.removeAllRanges();s.addRange(r);
+    try{document.execCommand('copy');done()}catch(e){bt.textContent='Select and copy'}};
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).then(done,fallback)}else fallback();
+}));
+
+// ---------- SVG helpers ----------
+function resolveVars(html){const cs=getComputedStyle(document.documentElement);return html.replace(/var\((--[\w-]+)\)/g,(m,v)=>cs.getPropertyValue(v).trim()||m)}
+const txt=(x,y,s,o={})=>`<text x="${x}" y="${y}" font-size="${o.size||12}" fill="${o.fill||'var(--ink-2)'}"${o.anchor?` text-anchor="${o.anchor}"`:''}${o.tf?` transform="${o.tf}"`:''}${o.weight?` font-weight="${o.weight}"`:''}>${s}</text>`;
+function zig(x,y1,y2){if(Math.abs(y2-y1)<2)return '';const k=10,a=4;let d=`M${x},${y1}`;for(let j=1;j<k;j++){const t=y1+(y2-y1)*j/k;d+=` L${x+(j%2?a:-a)},${t}`}return d+` L${x},${y2}`}
+function axes(){
+  let a='';
+  for(let x=0;x<=XMAX;x+=100)a+=`<line x1="${px(x)}" y1="${T}" x2="${px(x)}" y2="${H-Bm}" stroke="var(--grid)" stroke-width="${x%200?0.6:1}"/>`;
+  for(let y=0;y<=YMAX;y+=250)a+=`<line x1="${L}" y1="${py(y)}" x2="${W-R}" y2="${py(y)}" stroke="var(--grid)" stroke-width="${y%500?0.6:1}"/>`;
+  a+=`<line x1="${L}" y1="${H-Bm}" x2="${W-R}" y2="${H-Bm}" stroke="var(--rule-strong)"/><line x1="${L}" y1="${T}" x2="${L}" y2="${H-Bm}" stroke="var(--rule-strong)"/>`;
+  for(let x=0;x<=XMAX;x+=200)a+=txt(px(x),H-Bm+17,fx(x),{anchor:'middle'});
+  for(let y=0;y<=YMAX;y+=500)a+=txt(L-8,py(y)+4,fm(y),{anchor:'end'});
+  a+=txt((L+W-R)/2,H-6,'Square feet (x)',{anchor:'middle'});
+  a+=txt(13,(T+H-Bm)/2,'Monthly rent, CAD (y)',{anchor:'middle',tf:`rotate(-90 13 ${(T+H-Bm)/2})`});
+  return a;
+}
+function paintPlot(g){$('plot').innerHTML=resolveVars(`<defs><clipPath id="clip"><rect x="${L-6}" y="${T}" width="${W-L-R+6}" height="${H-T-Bm}"/></clipPath></defs>${axes()}<g clip-path="url(#clip)">${g}</g>`)}
+function chip(el,ok,okT,badT){el.textContent=ok?okT:badT;el.className='chip '+(ok?'ok':'warn')}
+
+// ---------- model helpers ----------
+const gdW=()=>gd.wk/XSCALE;                       // $ per sq ft
+function params(which){if(which==='cf')return{w:D.wh,b:D.bh};if(which==='gd')return{w:gdW(),b:gd.b};return{w:man.w,b:man.b}}
+function metricsOn(set,w,b){const m=set.length;if(!m)return null;let ae=0,se=0,mean=set.reduce((a,p)=>a+p.y,0)/m,sst=0;
+  set.forEach(p=>{const e=p.y-(w*p.x+b);ae+=Math.abs(e);se+=e*e;sst+=(p.y-mean)**2});
+  return{mae:ae/m,rmse:Math.sqrt(se/m),mse:se/m,r2:sst>0?1-se/sst:NaN}}
+const hw=x=>{const df=D.nt-2;if(df<1)return 0;const s=Math.sqrt(D.sseMin/df);return tq(df)*s*Math.sqrt(1+1/D.nt+(x-D.xb)**2/D.sxx)};
+
+// ---------- main render ----------
+function syncLegend(){$('vMan').checked=view.man;$('vCF').checked=view.cf&&cf.shown;$('vGD').checked=view.gd;$('vTest').checked=view.test;$('vSpr').value=view.springs}
+function update(){syncLegend();drawPlot();if(!D)return;render2();render3();render4();render5();drawLoss();render6();render7();render8()}
+
+function drawPlot(){
+  if(!D){paintPlot(txt((L+W-R)/2,(T+H-Bm)/2,'Choose your settings in Step 1, then generate data',{anchor:'middle',size:14}));return}
+  const hid=hide.checked,x0=pred.x,P=params(pred.src==='gd'?'gd':'cf'),yh=P.w*x0+P.b;
+  const sp=view.springs,SP=sp==='none'?null:params(sp);
+  const match=findMatch(x0);
+  let g=`<rect x="${px(0)}" y="${T}" width="${px(D.xmin)-px(0)}" height="${H-T-Bm}" fill="var(--surface-2)" opacity=".7"/><rect x="${px(D.xmax)}" y="${T}" width="${px(XMAX)-px(D.xmax)}" height="${H-T-Bm}" fill="var(--surface-2)" opacity=".7"/>`;
+  g+=txt(px(D.xmax)+8,T+16,'extrapolation',{size:11});
+  const showBand=pred.src==='cf'&&cf.shown;
+  if(showBand){let up='',lo='';for(let x=0;x<=XMAX;x+=40){up+=`${px(x)},${py(D.wh*x+D.bh+hw(x))} `;lo=`${px(x)},${py(D.wh*x+D.bh-hw(x))} `+lo}g+=`<polygon points="${up}${lo}" fill="var(--predict-fill)"/>`}
+  if(SP)D.tr.forEach(p=>{const on=match&&match.set==='train'&&match.p===p;g+=`<path d="${zig(px(p.x),py(SP.w*p.x+SP.b),py(p.y))}" fill="none" stroke="var(--spring)" stroke-width="${on?2.5:1.5}" stroke-opacity="${!match||on?1:0.45}"/>`});
+  const line=(P,st,wd,dash)=>`<line x1="${px(0)}" y1="${py(P.b)}" x2="${px(XMAX)}" y2="${py(P.w*XMAX+P.b)}" stroke="${st}" stroke-width="${wd}"${dash?` stroke-dasharray="${dash}"`:''}/>`;
+  if(view.man)g+=line(params('manual'),'var(--ink)',2.5);
+  if(view.cf&&cf.shown)g+=line(params('cf'),'var(--cf)',2.5);
+  if(view.gd&&isFinite(gd.b)&&isFinite(gd.wk))g+=line(params('gd'),'var(--gd)',2.5,'8 5');
+  const r=D.n>60?4:5;
+  D.tr.forEach(p=>{const on=match&&match.p===p;g+=`<circle cx="${px(p.x)}" cy="${py(p.y)}" r="${r}" fill="var(--ink)" fill-opacity="${!match||on?1:0.5}"/>`});
+  if(view.test)D.te.forEach(p=>{g+=`<circle cx="${px(p.x)}" cy="${py(p.y)}" r="${r}" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="2"/>`});
+  g+=`<circle cx="${px(D.xb)}" cy="${py(D.yb)}" r="7" fill="none" stroke="var(--mean)" stroke-width="2.5"/>`;
+  const predOK=pred.src==='gd'||cf.shown;
+  if(predOK){
+    if(showBand&&hw(x0)>1)g+=`<line x1="${px(x0)}" y1="${py(yh-hw(x0))}" x2="${px(x0)}" y2="${py(yh+hw(x0))}" stroke="var(--predict)" stroke-width="2" stroke-opacity=".6"/>`;
+    if(isFinite(yh))g+=`<circle cx="${px(x0)}" cy="${py(yh)}" r="7" fill="var(--surface)" stroke="var(--predict)" stroke-width="3"/>`;
+    if(match&&isFinite(yh)){
+      const yo=match.p.y,e=yo-yh,lx=px(x0)+14,above=e>=0;
+      g+=`<circle cx="${px(x0)}" cy="${py(yo)}" r="8.5" fill="none" stroke="var(--spring)" stroke-width="2.5"/>`;
+      g+=txt(lx,py(yo)+(above?-6:16),`y = ${fm(yo)}`,{size:13,fill:'var(--spring)'});
+      if(!hid)g+=txt(lx,py(yh)+(above?18:-8),`ŷ = ${fm(yh)}`,{size:13,fill:'var(--predict)'});
+    }
+  }
+  paintPlot(g);
+}
+function findMatch(x){let p=D.tr.find(q=>q.x===x);if(p)return{set:'train',p,i:D.tr.indexOf(p)};p=D.te.find(q=>q.x===x);if(p)return{set:'test',p,i:D.te.indexOf(p)};return null}
+
+function render2(){
+  $('mo').textContent='$'+man.w.toFixed(2);$('bo').textContent=fm(man.b);
+  $('manEq').innerHTML=`Your line: <span class="math">ŷ</span> = $${man.w.toFixed(2)} × <span class="math">x</span> + ${fm(man.b)}`;
+}
+
+function render3(){
+  const hid=hide.checked,w=man.w,b=man.b,tr=D.tr;
+  let sse=0,se=0,tw=0;const E=tr.map(p=>{const e=p.y-(w*p.x+b);sse+=e*e;se+=e;tw+=(p.x-D.xb)*e;return e});
+  const heightOK=Math.abs(se)<0.5,tiltOK=w===D.wh,best=heightOK&&tiltOK&&b===D.bh;
+  chip($('chH'),heightOK,'Height balanced: Σe = 0','Height off: Σe ≠ 0');
+  chip($('chT'),tiltOK,'Tilt balanced: Σ(x − x̄)e = 0','Tilt off: Σ(x − x̄)e ≠ 0');
+  $('sse').textContent=Math.round(sse).toLocaleString(loc);
+  $('ssemin').textContent=best?'the minimum ($²)':(cf.shown?`minimum is ${Math.round(D.sseMin).toLocaleString(loc)}`:'($²)');
+  $('mseMan').textContent=Math.round(sse/D.nt).toLocaleString(loc);
+  const r2=1-sse/D.sst;$('r2').textContent=isFinite(r2)?r2.toFixed(3):'—';
+  const seEl=$('se'),twEl=$('tw');
+  seEl.textContent=hid?'?':sg(se);seEl.classList.toggle('bad',!hid&&!heightOK);
+  twEl.textContent=hid?'?':fs(tiltOK?0:tw);twEl.classList.toggle('bad',!hid&&!tiltOK);
+  const match=findMatch(pred.x);
+  $('tb').innerHTML=tr.map((p,i)=>{const yhi=w*p.x+b,e=E[i],side=Math.round(e)===0?'on line':e>0?'above':'below',hit=match&&match.set==='train'&&match.i===i;
+    return `<tr tabindex="0" data-x="${p.x}" class="${hit?'hit':''}"><td>${fx(p.x)}</td><td class="eq">${w.toFixed(2)} × ${fx(p.x)} + ${fm(b)}</td><td>${hid?'?':fm(yhi)}</td><td>${fm(p.y)}</td><td>${hid?'?':`${sg(e)} <span style="font-size:.8em">(${side})</span>`}</td></tr>`}).join('');
+  const sc=$('sum');sc.textContent=hid?'?':sg(se);sc.classList.toggle('bad',!hid&&!heightOK);
+}
+
+function render4(){
+  if(!cf.shown)return;
+  $('cfEq').innerHTML=`<span class="math">ŵ</span> = ${fx(D.sxy)} / ${fx(D.sxx)} = $${D.wh.toFixed(4)} per sq ft<br><span class="math">b̂</span> = ${fm(D.yb)} − ${D.wh.toFixed(4)} × ${fx(D.xb)} = ${fm(D.bh)}<br><span class="dim">x̄ = ${fx(D.xb)} sq ft and ȳ = ${fm(D.yb)}, from the ${D.nt} training apartments.</span>`;
+  $('cfW').textContent='$'+D.wh.toFixed(4);$('cfB').textContent=fm(D.bh);$('cfMSE').textContent=Math.round(D.sseMin/D.nt).toLocaleString(loc);
+}
+
+function showGdMsg(kind,text){const m=$('gdMsg');m.hidden=!text;m.className='msg '+kind;m.textContent=text||''}
+function render5(){
+  const cur=grads(gd.wk,gd.b),mse=gd.hist[gd.hist.length-1];
+  $('gEp').textContent=fx(gd.epoch)+(gd.running?' …':'');
+  $('gW').textContent=isFinite(gd.wk)?'$'+fn(gdW(),4):'—';
+  $('gWk').textContent=isFinite(gd.wk)?`$${fn(gd.wk,1)} per 1,000 sq ft in training`:'';
+  $('gB').textContent=isFinite(gd.b)?fm(gd.b):'—';
+  $('gMSE').textContent=gd.diverged?'diverged':fmse(mse);
+  $('gGw').textContent=gd.diverged?'—':fbig(cur.gw);$('gGb').textContent=gd.diverged?'—':fbig(cur.gb);
+  const u=$('gdUpd');
+  if(!gd.last){u.innerHTML=`<span class="dim">Epoch 0: w = $${fn(gd.w0,2)} per sq ft (${fn(gd.w0*XSCALE,1)} per 1,000 sq ft), b = ${fm(gd.b0)}, η = ${gd.lr}. Press Next Epoch to see the first update.</span>`}
+  else{const L0=gd.last;
+    u.innerHTML=`Last update (epoch ${fx(gd.epoch)}, x in 1,000 sq ft):<br>`+
+      `<span class="math">w</span> ← ${fbig(L0.wkPrev)} − ${gd.lr} × (${fbig(L0.g.gw)}) = ${fbig(gd.wk)}<br>`+
+      `<span class="math">b</span> ← ${fbig(L0.bPrev)} − ${gd.lr} × (${fbig(L0.g.gb)}) = ${fbig(gd.b)}`}
+  if(gd.diverged)showGdMsg('warn',`Training diverged at epoch ${fx(gd.epoch)}. The learning rate η = ${gd.lr} is too large: each update overshoots the minimum, so the loss grows instead of shrinking. Press Reset Training and choose a smaller η.`);
+  else if(gd.epoch>0&&!gd.running){const gap=(mse-D.sseMin/D.nt)/(D.sseMin/D.nt);
+    if(gap<0.001)showGdMsg('ok',`Converged: after ${fx(gd.epoch)} epochs the training MSE is within 0.1% of the closed-form minimum.`);
+    else if(gd.hist.length>2&&mse>gd.hist[gd.hist.length-2])showGdMsg('warn','The loss rose on the last epoch. The learning rate may be too large.');
+    else showGdMsg('info',`Still descending: the training MSE is ${(gap*100).toFixed(gap<0.1?2:0)}% above the minimum. Train for more epochs, or try a larger η.`)}
+  else if(!gd.running)showGdMsg('',null);
+}
+
+function drawLoss(){
+  const svgL=$('loss');if(!D){svgL.innerHTML='';return}
+  const LW=680,LH=230,l=84,r=16,t=14,bm=38,log=$('logS').checked;
+  const hist=gd.hist,minMSE=D.sseMin/D.nt,xmx=Math.max(targetEpochs(),gd.epoch,1);
+  const lx=e=>l+e/xmx*(LW-l-r);
+  let lo=Math.min(minMSE,...hist.slice(-2000)),hi=Math.max(...hist.slice(0,2000),minMSE*1.01);
+  let ly,ticks=[];
+  if(log){lo=Math.max(lo*0.97,1e-6);hi=hi*1.3;const a=Math.log10(lo),bb=Math.log10(hi);ly=v=>LH-bm-(Math.log10(Math.max(v,lo))-a)/(bb-a)*(LH-t-bm);
+    for(let k=Math.floor(a);k<=Math.ceil(bb);k++)for(const f of [1,2,5]){const v=f*10**k;if(v>=lo&&v<=hi)ticks.push(v)}
+    if(ticks.length>7)ticks=ticks.filter(v=>String(v).startsWith('1'));if(ticks.length<2)ticks=[lo,hi]}
+  else{lo=0;hi=hi*1.05;ly=v=>LH-bm-Math.min(v,hi)/hi*(LH-t-bm);for(let i=0;i<=4;i++)ticks.push(hi*i/4)}
+  let s=`<line x1="${l}" y1="${LH-bm}" x2="${LW-r}" y2="${LH-bm}" stroke="var(--rule-strong)"/><line x1="${l}" y1="${t}" x2="${l}" y2="${LH-bm}" stroke="var(--rule-strong)"/>`;
+  ticks.forEach(v=>{const y=ly(v);s+=`<line x1="${l}" y1="${y}" x2="${LW-r}" y2="${y}" stroke="var(--grid)"/>`+txt(l-6,y+4,v>=1e8?v.toExponential(0):Math.round(v).toLocaleString(loc),{anchor:'end',size:11})});
+  for(let i=0;i<=4;i++){const e=Math.round(xmx*i/4);s+=txt(lx(e),LH-bm+16,fx(e),{anchor:'middle',size:11})}
+  s+=txt((l+LW-r)/2,LH-4,'Epoch',{anchor:'middle',size:12});
+  s+=txt(12,(t+LH-bm)/2,'Training MSE',{anchor:'middle',size:12,tf:`rotate(-90 12 ${(t+LH-bm)/2})`});
+  if(cf.shown){const y=ly(minMSE);s+=`<line x1="${l}" y1="${y}" x2="${LW-r}" y2="${y}" stroke="var(--cf)" stroke-width="1.5" stroke-dasharray="5 4"/>`+txt(LW-r-4,y-5,'closed-form minimum',{anchor:'end',size:11,fill:'var(--cf)'})}
+  const stp=Math.max(1,Math.ceil(hist.length/900));let pts='';
+  for(let i=0;i<hist.length;i+=stp)pts+=`${lx(i)},${ly(hist[i])} `;
+  if(hist.length)pts+=`${lx(hist.length-1)},${ly(hist[hist.length-1])}`;
+  s+=`<polyline points="${pts}" fill="none" stroke="var(--gd)" stroke-width="2"/>`;
+  if(hist.length)s+=`<circle cx="${lx(hist.length-1)}" cy="${ly(hist[hist.length-1])}" r="4" fill="var(--gd)"/>`;
+  svgL.innerHTML=resolveVars(`<defs><clipPath id="lclip"><rect x="${l}" y="${t-4}" width="${LW-l-r+4}" height="${LH-t-bm+8}"/></clipPath></defs>`+s.replace('<polyline','<g clip-path="url(#lclip)"><polyline')+'</g>');
+}
+
+function render6(){
+  const t=$('cmp'),msg=$('cmpMsg');
+  if(!cf.shown){t.innerHTML='';msg.hidden=false;msg.className='msg info';msg.textContent='Compute the closed-form solution in Step 4 to compare the two methods.';return}
+  const mCF=D.sseMin/D.nt,mGD=gd.hist[gd.hist.length-1],gW=gdW();
+  const gLab=gd.epoch===0?'Gradient descent (epoch 0, untrained)':`Gradient descent (epoch ${fx(gd.epoch)})`;
+  const ok=!gd.diverged&&isFinite(gW);
+  t.innerHTML=`<thead><tr><th scope="col">Parameter</th><th scope="col">Closed-form</th><th scope="col">${gLab}</th><th scope="col">Difference</th></tr></thead><tbody>
+  <tr><td>Weight: w_hat vs w_gd ($/sq ft)</td><td>$${D.wh.toFixed(4)}</td><td>${ok?'$'+fn(gW,4):'—'}</td><td>${ok?fn(gW-D.wh,4):'—'}</td></tr>
+  <tr><td>Bias: b_hat vs b_gd ($)</td><td>${fm(D.bh)}</td><td>${ok?fm(gd.b):'—'}</td><td>${ok?sg(gd.b-D.bh):'—'}</td></tr>
+  <tr><td>Training MSE</td><td>${Math.round(mCF).toLocaleString(loc)}</td><td>${gd.diverged?'diverged':fmse(mGD)}</td><td>${gd.diverged?'—':fs(mGD-mCF)}</td></tr></tbody>`;
+  msg.hidden=false;
+  if(gd.diverged){msg.className='msg warn';msg.textContent='Gradient descent diverged, so there is no line to compare. Reset training in Step 5 with a smaller learning rate.'}
+  else if(gd.epoch===0){msg.className='msg info';msg.textContent='Train in Step 5 and watch the dashed green line move onto the solid red one.'}
+  else{const gap=(mGD-mCF)/mCF;msg.className='msg '+(gap<0.001?'ok':'info');
+    msg.textContent=gap<0.001?'The two lines coincide: gradient descent has found the same minimum as the normal equation.':`The dashed line is still approaching the solid one. Its training loss is ${(gap*100).toFixed(gap<0.1?2:0)}% above the minimum.`}
+}
+
+function render7(){
+  const rows=[];
+  if(cf.shown)rows.push(['Closed-form (w_hat, b_hat)',D.wh,D.bh,D.sseMin/D.nt]);
+  if(gd.epoch>0&&!gd.diverged)rows.push([`Gradient descent (w_gd, b_gd), epoch ${fx(gd.epoch)}`,gdW(),gd.b,gd.hist[gd.hist.length-1]]);
+  const t=$('evalT');
+  if(!rows.length){t.innerHTML='<tbody><tr><td class="sub">Compute the closed-form solution (Step 4) or train with gradient descent (Step 5) to evaluate a model.</td></tr></tbody>'}
+  else t.innerHTML=`<thead><tr><th scope="col">Model</th><th scope="col">Training MSE (loss)</th><th scope="col">Test MAE</th><th scope="col">Test RMSE</th><th scope="col">Test R²</th></tr></thead><tbody>`+
+    rows.map(([name,w,b,trm])=>{const m=metricsOn(D.te,w,b);return `<tr><td>${name}</td><td>${fmse(trm)}</td><td>${fm(m.mae)}</td><td>${fm(m.rmse)}</td><td>${isFinite(m.r2)?m.r2.toFixed(3):'—'}</td></tr>`}).join('')+'</tbody>';
+  const match=findMatch(pred.x),gOK=gd.epoch>0&&!gd.diverged;
+  $('tt').innerHTML=D.te.map((p,i)=>{const hit=match&&match.set==='test'&&match.i===i;
+    return `<tr tabindex="0" data-x="${p.x}" class="${hit?'hit':''}"><td>${fx(p.x)}</td><td>${fm(p.y)}</td><td>${cf.shown?fm(D.wh*p.x+D.bh):'—'}</td><td>${gOK?fm(gdW()*p.x+gd.b):'—'}</td></tr>`}).join('');
+}
+
+function render8(){
+  const x0=pred.x,src=pred.src;$('xo').textContent=fx(x0);
+  const eq=$('predEq'),pc=$('pic'),pl=$('pil'),pv=$('pi');
+  const need=src==='cf'&&!cf.shown;
+  const P=params(src),yh=P.w*x0+P.b,match=findMatch(x0),hid=hide.checked;
+  if(need){eq.innerHTML='<span class="dim">Compute the closed-form solution in Step 4 first, or switch to gradient descent parameters.</span>';$('yh').textContent='—';$('yhSrc').textContent=''}
+  else if(src==='gd'&&gd.diverged){eq.innerHTML='<span class="dim">Gradient descent diverged. Reset training in Step 5 with a smaller learning rate.</span>';$('yh').textContent='—';$('yhSrc').textContent=''}
+  else{
+    const wn=src==='cf'?'w_hat':'w_gd',bn=src==='cf'?'b_hat':'b_gd',ep=src==='gd'?(gd.epoch===0?' (epoch 0, untrained)':` (after ${fx(gd.epoch)} epochs)`):'';
+    let h=`<span class="math">ŷ_new</span> = ${wn} × x_new + ${bn}${ep}<br>= $${fn(P.w,4)} × ${fx(x0)} + ${fm(P.b)} = <strong>${fm(yh)}</strong>`;
+    if(match)h+=`<br>${fx(x0)} sq ft matches ${match.set==='train'?'training':'test'} apartment ${match.i+1}: actual rent ${fm(match.p.y)}, error y − ŷ = ${hid?'?':sg(match.p.y-yh)}`;
+    else h+=`<br><span class="dim">No apartment of this size is in the sample, so only the prediction is available.</span>`;
+    eq.innerHTML=h;$('yh').textContent=fm(yh);$('yhSrc').textContent=src==='cf'?'closed-form parameters':'gradient descent parameters';
+  }
+  $('yo').textContent=match?fm(match.p.y):'—';$('yoSet').textContent=match?(match.set==='train'?'training apartment':'test apartment'):'';
+  const ext=x0<D.xmin||x0>D.xmax;pc.classList.remove('warn');pl.textContent='95% prediction interval';
+  if(src!=='cf')pv.textContent='Closed-form only';
+  else if(!cf.shown)pv.textContent='—';
+  else{const h=hw(x0);if(ext){pc.classList.add('warn');pl.textContent='95% interval (extrapolating)'}pv.textContent=`${fm(yh-h)} to ${fm(yh+h)}`}
+  if(ext&&src!=='cf'&&!need){pc.classList.add('warn');pl.textContent='Extrapolating';pv.textContent='Outside the training sizes'}
+}
+
+// Redraw when the device switches between light and dark mode.
+if(window.matchMedia){const mq=window.matchMedia('(prefers-color-scheme: dark)');const re=()=>update();if(mq.addEventListener)mq.addEventListener('change',re);else if(mq.addListener)mq.addListener(re)}
+
+out1();update();
+})();
+</script>
+</body>
+</html>
